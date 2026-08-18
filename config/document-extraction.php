@@ -8,7 +8,7 @@
  *             url: ?string,
  *             key: ?string,
  *             webhook_secret: ?string,
- *             requests_per_second: int,
+ *             requests_per_second: int|string,
  *         },
  *     },
  * }
@@ -22,7 +22,7 @@ return [
             'key' => env('KONCILE_AI_API_KEY'),
             'webhook_secret' => env('KONCILE_AI_WEBHOOK_SECRET'),
             // Maximum upload requests per second across all processes; 0 disables throttling.
-            'requests_per_second' => (int) env('KONCILE_AI_REQUESTS_PER_SECOND', 1),
+            'requests_per_second' => env('KONCILE_AI_REQUESTS_PER_SECOND', 1),
         ],
     ],
 ];

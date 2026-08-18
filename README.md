@@ -55,7 +55,7 @@ return [
             'key' => env('KONCILE_AI_API_KEY'),
             'webhook_secret' => env('KONCILE_AI_WEBHOOK_SECRET'),
             // Maximum upload requests per second across all processes; 0 disables throttling.
-            'requests_per_second' => (int) env('KONCILE_AI_REQUESTS_PER_SECOND', 1),
+            'requests_per_second' => env('KONCILE_AI_REQUESTS_PER_SECOND', 1),
         ],
     ],
 ];
@@ -63,7 +63,11 @@ return [
 
 Uploads are throttled through a rate limiter stored in the application cache, so the
 per-second budget is shared by every queue worker and console process on every server.
-Set `requests_per_second` to `0` to disable throttling.
+The default cache store **must be shared across all workers and servers and support atomic
+locks** (Redis, or the database store with the `cache_locks` table); a per-process store such
+as `array` or `file` would give each process its own budget.
+Set `requests_per_second` to `0` to disable throttling; any other value must be a positive
+integer, otherwise the provider refuses to boot.
 
 ### Environment Variables
 

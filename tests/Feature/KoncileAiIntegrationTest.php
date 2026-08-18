@@ -237,6 +237,33 @@ describe('upload throttling', function () {
         Http::assertSentCount(1);
     });
 
+    it('never grants more upload slots per second than configured', function () {
+        config(['document-extraction.providers.koncile_ai.requests_per_second' => 2]);
+        Carbon::setTestNow('2026-01-01 00:00:00');
+        Sleep::fake(syncWithCarbon: true);
+        Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+        Http::fake([
+            'api.koncile.ai/v1/upload_file/*' => Http::sequence()
+                ->push(['task_ids' => ['task-budget-1']])
+                ->push(['task_ids' => ['task-budget-2']])
+                ->push(['task_ids' => ['task-budget-3']]),
+        ]);
+
+        $extractions = DocumentExtraction::factory()->count(3)->create([
+            'filename' => 'documents/test.pdf',
+            'metadata' => $this->metadata,
+        ]);
+
+        $integration = new KoncileAiIntegration;
+        $extractions->each(fn (DocumentExtraction $extraction) => $integration->process($extraction));
+
+        // Two slots fit in the first second; the third upload must wait for the window to reset.
+        Sleep::assertSleptTimes(10);
+        Http::assertSentCount(3);
+        expect(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
+
     it('uploads immediately and claims the slot when the budget is free', function () {
         Sleep::fake();
         Storage::put('documents/test.pdf', 'fake-pdf-contents');
@@ -255,6 +282,17 @@ describe('upload throttling', function () {
         Sleep::assertNeverSlept();
         expect(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
     });
+
+    it('rejects an invalid requests_per_second value', function (mixed $value) {
+        config(['document-extraction.providers.koncile_ai.requests_per_second' => $value]);
+
+        new KoncileAiIntegration;
+    })->with([
+        'malformed' => 'abc',
+        'partially numeric' => '1foo',
+        'fractional' => '1.5',
+        'negative' => '-1',
+    ])->throws(\InvalidArgumentException::class, 'requests_per_second must be a non-negative integer');
 
     it('does not throttle when requests_per_second is zero', function () {
         config(['document-extraction.providers.koncile_ai.requests_per_second' => 0]);
