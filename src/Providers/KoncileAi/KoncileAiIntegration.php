@@ -17,7 +17,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     /**
      * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
      */
-    protected const UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
+    protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
 
     /**
      * @var array{url: ?string, key: ?string, webhook_secret: ?string, requests_per_second?: int}
