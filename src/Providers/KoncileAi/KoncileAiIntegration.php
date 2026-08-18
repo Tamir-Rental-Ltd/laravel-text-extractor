@@ -4,7 +4,9 @@ namespace TamirRental\DocumentExtraction\Providers\KoncileAi;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use InvalidArgumentException;
 use TamirRental\DocumentExtraction\Contracts\DocumentExtractionProvider;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
@@ -13,13 +15,18 @@ use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 class KoncileAiIntegration implements DocumentExtractionProvider
 {
     /**
-     * @var array{url: ?string, key: ?string, webhook_secret: ?string}
+     * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
+     */
+    protected const UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
+
+    /**
+     * @var array{url: ?string, key: ?string, webhook_secret: ?string, requests_per_second?: int}
      */
     protected array $config;
 
     public function __construct()
     {
-        /** @var array{url: ?string, key: ?string, webhook_secret: ?string} $config */
+        /** @var array{url: ?string, key: ?string, webhook_secret: ?string, requests_per_second?: int} $config */
         $config = config('document-extraction.providers.koncile_ai');
         $this->config = $config;
 
@@ -107,6 +114,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
             $url = rtrim($this->config['url'], '/').'/v1/upload_file/?'.http_build_query($queryParams);
 
+            $this->awaitUploadSlot();
+
             $response = Http::withToken($this->config['key'])
                 ->attach('files', $contents, $filename)
                 ->post($url);
@@ -135,6 +144,28 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
             return $this->failedResponse("Network error: {$e->getMessage()}");
         }
+    }
+
+    /**
+     * Block until the shared per-second upload budget has a free slot, then claim it.
+     *
+     * The limiter lives in the application cache, so the budget is shared by every
+     * queue worker and console process across all servers. Disabled when
+     * requests_per_second is 0.
+     */
+    protected function awaitUploadSlot(): void
+    {
+        $requestsPerSecond = (int) ($this->config['requests_per_second'] ?? 1);
+
+        if ($requestsPerSecond < 1) {
+            return;
+        }
+
+        while (RateLimiter::tooManyAttempts(self::UPLOAD_RATE_LIMIT_KEY, $requestsPerSecond)) {
+            Sleep::for(100)->milliseconds();
+        }
+
+        RateLimiter::hit(self::UPLOAD_RATE_LIMIT_KEY, 1);
     }
 
     /**
