@@ -21,7 +21,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
 
     /**
-     * @var array{url: ?string, key: ?string, webhook_secret: ?string, requests_per_second?: int|string}
+     * @var array{url: ?string, key: ?string, webhook_secret: ?string}
      */
     protected array $config;
 
@@ -32,7 +32,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
     public function __construct()
     {
-        /** @var array{url: ?string, key: ?string, webhook_secret: ?string, requests_per_second?: int|string} $config */
+        /** @var array{url: ?string, key: ?string, webhook_secret: ?string} $config */
         $config = config('document-extraction.providers.koncile_ai');
         $this->config = $config;
 
@@ -47,7 +47,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
             );
         }
 
-        $this->requestsPerSecond = $this->resolveRequestsPerSecond($this->config['requests_per_second'] ?? 1);
+        $this->requestsPerSecond = $this->resolveRequestsPerSecond(config('document-extraction.requests_per_second'));
     }
 
     /**

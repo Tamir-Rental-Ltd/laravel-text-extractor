@@ -238,7 +238,7 @@ describe('upload throttling', function () {
     });
 
     it('never grants more upload slots per second than configured', function () {
-        config(['document-extraction.providers.koncile_ai.requests_per_second' => 2]);
+        config(['document-extraction.requests_per_second' => 2]);
         Carbon::setTestNow('2026-01-01 00:00:00');
         Sleep::fake(syncWithCarbon: true);
         Storage::put('documents/test.pdf', 'fake-pdf-contents');
@@ -284,7 +284,7 @@ describe('upload throttling', function () {
     });
 
     it('rejects an invalid requests_per_second value', function (mixed $value) {
-        config(['document-extraction.providers.koncile_ai.requests_per_second' => $value]);
+        config(['document-extraction.requests_per_second' => $value]);
 
         new KoncileAiIntegration;
     })->with([
@@ -295,7 +295,7 @@ describe('upload throttling', function () {
     ])->throws(\InvalidArgumentException::class, 'requests_per_second must be a non-negative integer');
 
     it('does not throttle when requests_per_second is zero', function () {
-        config(['document-extraction.providers.koncile_ai.requests_per_second' => 0]);
+        config(['document-extraction.requests_per_second' => 0]);
         Sleep::fake();
         Storage::put('documents/test.pdf', 'fake-pdf-contents');
 

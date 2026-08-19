@@ -49,19 +49,20 @@ Provider connection settings.
 return [
     'default' => env('EXTRACTION_PROVIDER', 'koncile_ai'),
 
+    // Maximum provider requests per second across all processes; 0 disables throttling.
+    'requests_per_second' => env('EXTRACTION_REQUESTS_PER_SECOND', 1),
+
     'providers' => [
         'koncile_ai' => [
             'url' => env('KONCILE_AI_API_URL', 'https://api.koncile.ai'),
             'key' => env('KONCILE_AI_API_KEY'),
             'webhook_secret' => env('KONCILE_AI_WEBHOOK_SECRET'),
-            // Maximum upload requests per second across all processes; 0 disables throttling.
-            'requests_per_second' => env('KONCILE_AI_REQUESTS_PER_SECOND', 1),
         ],
     ],
 ];
 ```
 
-Uploads are throttled through a rate limiter stored in the application cache, so the
+Provider requests are throttled through a rate limiter stored in the application cache, so the
 per-second budget is shared by every queue worker and console process on every server.
 The default cache store **must be shared across all workers and servers and support atomic
 locks** (Redis, or the database store with the `cache_locks` table); a per-process store such
@@ -80,7 +81,7 @@ Add these to your `.env` file:
 ```env
 KONCILE_AI_API_KEY=your-api-key
 KONCILE_AI_WEBHOOK_SECRET=your-webhook-secret
-KONCILE_AI_REQUESTS_PER_SECOND=1
+EXTRACTION_REQUESTS_PER_SECOND=1
 ```
 
 ## Usage
