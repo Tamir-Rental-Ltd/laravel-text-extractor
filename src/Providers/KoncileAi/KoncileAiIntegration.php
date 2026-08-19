@@ -6,16 +6,29 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use TamirRental\DocumentExtraction\Concerns\ThrottlesRequests;
 use TamirRental\DocumentExtraction\Contracts\DocumentExtractionProvider;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 
 class KoncileAiIntegration implements DocumentExtractionProvider
 {
+    use ThrottlesRequests;
+
+    /**
+     * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
+     */
+    protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
+
     /**
      * @var array{url: ?string, key: ?string, webhook_secret: ?string}
      */
     protected array $config;
+
+    /**
+     * Upload budget per second shared by every process; 0 disables throttling.
+     */
+    protected int $requestsPerSecond;
 
     public function __construct()
     {
@@ -33,6 +46,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
                 'Koncile AI config missing required key(s): '.implode(', ', $missing),
             );
         }
+
+        $this->requestsPerSecond = $this->resolveRequestsPerSecond(config('document-extraction.requests_per_second'));
     }
 
     /**
@@ -106,6 +121,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
             }
 
             $url = rtrim($this->config['url'], '/').'/v1/upload_file/?'.http_build_query($queryParams);
+
+            $this->awaitRequestSlot(self::UPLOAD_RATE_LIMIT_KEY, $this->requestsPerSecond);
 
             $response = Http::withToken($this->config['key'])
                 ->attach('files', $contents, $filename)

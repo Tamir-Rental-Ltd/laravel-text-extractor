@@ -1,7 +1,10 @@
 <?php
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 use TamirRental\DocumentExtraction\Providers\KoncileAi\KoncileAiIntegration;
@@ -207,4 +210,110 @@ it('does not send folder_id query param when not in metadata', function () {
     $this->integration->process($extraction);
 
     expect($capturedUrl)->not->toContain('folder_id');
+});
+
+describe('upload throttling', function () {
+    it('waits until the shared upload rate limit frees a slot before uploading', function () {
+        Carbon::setTestNow('2026-01-01 00:00:00');
+        Sleep::fake(syncWithCarbon: true);
+        Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+        Http::fake([
+            'api.koncile.ai/v1/upload_file/*' => Http::response(['task_ids' => ['task-throttled']], 200),
+        ]);
+
+        // Another process has already used this second's slot.
+        RateLimiter::hit('koncile-ai:upload', 1);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/test.pdf',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        expect($extraction->refresh()->external_task_id)->toBe('task-throttled');
+        Sleep::assertSleptTimes(10);
+        Http::assertSentCount(1);
+    });
+
+    it('never grants more upload slots per second than configured', function () {
+        config(['document-extraction.requests_per_second' => 2]);
+        Carbon::setTestNow('2026-01-01 00:00:00');
+        Sleep::fake(syncWithCarbon: true);
+        Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+        Http::fake([
+            'api.koncile.ai/v1/upload_file/*' => Http::sequence()
+                ->push(['task_ids' => ['task-budget-1']])
+                ->push(['task_ids' => ['task-budget-2']])
+                ->push(['task_ids' => ['task-budget-3']]),
+        ]);
+
+        $extractions = DocumentExtraction::factory()->count(3)->create([
+            'filename' => 'documents/test.pdf',
+            'metadata' => $this->metadata,
+        ]);
+
+        $integration = new KoncileAiIntegration;
+        $extractions->each(fn (DocumentExtraction $extraction) => $integration->process($extraction));
+
+        // Two slots fit in the first second; the third upload must wait for the window to reset.
+        Sleep::assertSleptTimes(10);
+        Http::assertSentCount(3);
+        expect(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
+
+    it('uploads immediately and claims the slot when the budget is free', function () {
+        Sleep::fake();
+        Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+        Http::fake([
+            'api.koncile.ai/v1/upload_file/*' => Http::response(['task_ids' => ['task-free-slot']], 200),
+        ]);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/test.pdf',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        Sleep::assertNeverSlept();
+        expect(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
+
+    it('rejects an invalid requests_per_second value', function (mixed $value) {
+        config(['document-extraction.requests_per_second' => $value]);
+
+        new KoncileAiIntegration;
+    })->with([
+        'malformed' => 'abc',
+        'partially numeric' => '1foo',
+        'fractional' => '1.5',
+        'negative' => '-1',
+    ])->throws(\InvalidArgumentException::class, 'requests_per_second must be a non-negative integer');
+
+    it('does not throttle when requests_per_second is zero', function () {
+        config(['document-extraction.requests_per_second' => 0]);
+        Sleep::fake();
+        Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+        Http::fake([
+            'api.koncile.ai/v1/upload_file/*' => Http::response(['task_ids' => ['task-unthrottled']], 200),
+        ]);
+
+        RateLimiter::hit('koncile-ai:upload', 1);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/test.pdf',
+            'metadata' => $this->metadata,
+        ]);
+
+        (new KoncileAiIntegration)->process($extraction);
+
+        Sleep::assertNeverSlept();
+        expect($extraction->refresh()->external_task_id)->toBe('task-unthrottled')
+            ->and(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
 });

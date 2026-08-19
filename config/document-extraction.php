@@ -3,6 +3,7 @@
 /**
  * @return array{
  *     default: string,
+ *     requests_per_second: int|string,
  *     providers: array{
  *         koncile_ai: array{
  *             url: ?string,
@@ -14,6 +15,9 @@
  */
 return [
     'default' => env('EXTRACTION_PROVIDER', 'koncile_ai'),
+
+    // Maximum provider requests per second across all processes; 0 disables throttling.
+    'requests_per_second' => env('EXTRACTION_REQUESTS_PER_SECOND', 1),
 
     'providers' => [
         'koncile_ai' => [
