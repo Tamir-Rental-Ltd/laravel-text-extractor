@@ -2,19 +2,19 @@
 
 namespace TamirRental\DocumentExtraction\Providers\KoncileAi;
 
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Sleep;
 use InvalidArgumentException;
+use TamirRental\DocumentExtraction\Concerns\ThrottlesRequests;
 use TamirRental\DocumentExtraction\Contracts\DocumentExtractionProvider;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 
 class KoncileAiIntegration implements DocumentExtractionProvider
 {
+    use ThrottlesRequests;
+
     /**
      * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
      */
@@ -47,26 +47,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
             );
         }
 
-        $this->requestsPerSecond = $this->resolveRequestsPerSecond();
-    }
-
-    /**
-     * Validate requests_per_second as a non-negative integer so a malformed value can
-     * never silently disable throttling.
-     */
-    protected function resolveRequestsPerSecond(): int
-    {
-        $value = filter_var($this->config['requests_per_second'] ?? 1, FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 0],
-        ]);
-
-        if ($value === false) {
-            throw new InvalidArgumentException(
-                'Koncile AI config requests_per_second must be a non-negative integer.',
-            );
-        }
-
-        return $value;
+        $this->requestsPerSecond = $this->resolveRequestsPerSecond($this->config['requests_per_second'] ?? 1);
     }
 
     /**
@@ -141,7 +122,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
             $url = rtrim($this->config['url'], '/').'/v1/upload_file/?'.http_build_query($queryParams);
 
-            $this->awaitUploadSlot();
+            $this->awaitRequestSlot(self::UPLOAD_RATE_LIMIT_KEY, $this->requestsPerSecond);
 
             $response = Http::withToken($this->config['key'])
                 ->attach('files', $contents, $filename)
@@ -171,41 +152,6 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
             return $this->failedResponse("Network error: {$e->getMessage()}");
         }
-    }
-
-    /**
-     * Block until the shared per-second upload budget has a free slot, then claim it.
-     *
-     * The limiter lives in the application cache, so the budget is shared by every
-     * queue worker and console process across all servers. Check and claim run under
-     * a cache lock so two processes cannot take the same slot. Disabled when
-     * requests_per_second is 0.
-     */
-    protected function awaitUploadSlot(): void
-    {
-        if ($this->requestsPerSecond === 0) {
-            return;
-        }
-
-        while (! $this->claimUploadSlot()) {
-            Sleep::for(100)->milliseconds();
-        }
-    }
-
-    /**
-     * Atomically check the budget and record a hit when a slot is free.
-     */
-    protected function claimUploadSlot(): bool
-    {
-        return Cache::lock(self::UPLOAD_RATE_LIMIT_KEY.':lock', 5)->block(5, function (): bool {
-            if (RateLimiter::tooManyAttempts(self::UPLOAD_RATE_LIMIT_KEY, $this->requestsPerSecond)) {
-                return false;
-            }
-
-            RateLimiter::hit(self::UPLOAD_RATE_LIMIT_KEY, 1);
-
-            return true;
-        });
     }
 
     /**

@@ -69,6 +69,10 @@ as `array` or `file` would give each process its own budget.
 Set `requests_per_second` to `0` to disable throttling; any other value must be a positive
 integer, otherwise the provider refuses to boot.
 
+The throttle is provider-agnostic: any provider can opt in with the
+`TamirRental\DocumentExtraction\Concerns\ThrottlesRequests` trait and call
+`awaitRequestSlot($key, $requestsPerSecond)` before each outbound request.
+
 ### Environment Variables
 
 Add these to your `.env` file:
