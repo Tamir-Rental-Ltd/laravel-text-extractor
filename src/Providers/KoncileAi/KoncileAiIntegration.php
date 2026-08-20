@@ -16,6 +16,13 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     use ThrottlesRequests;
 
     /**
+     * Stored in error_message when Koncile rejects a request because a usage limit
+     * was reached (HTTP 402). Non-retryable until the account limit is raised;
+     * consumers can match on this constant to exclude such failures from retries.
+     */
+    public const string USAGE_LIMIT_ERROR_MESSAGE = 'Koncile AI usage limit reached (HTTP 402). Raise the limit in Koncile Billing & Usage.';
+
+    /**
      * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
      */
     protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
@@ -171,6 +178,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     protected function handleErrorResponse(int $statusCode, string $body): array
     {
         $message = match (true) {
+            $statusCode === 402 => self::USAGE_LIMIT_ERROR_MESSAGE,
             in_array($statusCode, [401, 403], true) => 'Authentication failed with Koncile AI.',
             in_array($statusCode, [400, 422], true) => "Validation error from Koncile AI: {$body}",
             $statusCode >= 500 => 'Koncile AI server error. Please try again later.',

@@ -128,6 +128,25 @@ it('fails extraction on validation error from koncile api', function () {
         ->error_message->toContain('Validation error');
 });
 
+it('fails extraction with the usage-limit message on http 402', function () {
+    Storage::put('documents/test.pdf', 'fake-pdf-contents');
+
+    Http::fake([
+        'api.koncile.ai/v1/upload_file/*' => Http::response(['detail' => 'Security monthly limits reached. Verify your settings'], 402),
+    ]);
+
+    $extraction = DocumentExtraction::factory()->create([
+        'filename' => 'documents/test.pdf',
+        'metadata' => $this->metadata,
+    ]);
+
+    $this->integration->process($extraction);
+
+    $extraction->refresh();
+    expect($extraction->status)->toBe(DocumentExtractionStatusEnum::Failed)
+        ->and($extraction->error_message)->toBe(KoncileAiIntegration::USAGE_LIMIT_ERROR_MESSAGE);
+});
+
 it('fails extraction on server error from koncile api', function () {
     Storage::put('documents/test.pdf', 'fake-pdf-contents');
 
