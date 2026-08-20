@@ -143,8 +143,9 @@ it('fails extraction with the usage-limit message on http 402', function () {
     $this->integration->process($extraction);
 
     $extraction->refresh();
-    expect($extraction->status)->toBe(DocumentExtractionStatusEnum::Failed)
-        ->and($extraction->error_message)->toBe(KoncileAiIntegration::USAGE_LIMIT_ERROR_MESSAGE);
+    expect($extraction)
+        ->status->toBe(DocumentExtractionStatusEnum::Failed)
+        ->error_message->toBe(KoncileAiIntegration::USAGE_LIMIT_ERROR_MESSAGE);
 });
 
 it('fails extraction on server error from koncile api', function () {
