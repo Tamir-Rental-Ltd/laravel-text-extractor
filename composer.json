@@ -18,6 +18,8 @@
     ],
     "require": {
         "php": "^8.4",
+        "ext-exif": "*",
+        "ext-gd": "*",
         "illuminate/contracts": "^11.0||^12.0||^13.0",
         "intervention/image": "^3.11.7",
         "spatie/laravel-package-tools": "^1.16"

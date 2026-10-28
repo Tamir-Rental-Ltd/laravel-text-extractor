@@ -82,9 +82,10 @@ class KoncileAiIntegration implements DocumentExtractionProvider
                 return;
             }
 
-            $contents = (new ImageShrinker(self::MAX_IMAGE_BYTES))->shrink($contents);
+            $uploadContents = (new ImageShrinker(self::MAX_IMAGE_BYTES))->shrink($contents);
+            $fileHeaders = $uploadContents === $contents ? [] : ['Content-Type' => 'image/jpeg'];
 
-            $result = $this->upload($contents, basename($extraction->filename), $extraction->type, $extraction->metadata ?? []);
+            $result = $this->upload($uploadContents, basename($extraction->filename), $extraction->type, $extraction->metadata ?? [], $fileHeaders);
 
             if ($result['status'] === DocumentExtractionStatusEnum::Pending->value && ! empty($result['external_id'])) {
                 $extraction->update([
@@ -113,9 +114,10 @@ class KoncileAiIntegration implements DocumentExtractionProvider
      * Upload file contents to Koncile AI for extraction.
      *
      * @param  array<string, mixed>  $metadata
+     * @param  array<string, string>  $fileHeaders  Headers for the file part; without a Content-Type, it is derived from the filename.
      * @return array{status: string, external_id?: string, message: string}
      */
-    protected function upload(string $contents, string $filename, string $documentType, array $metadata = []): array
+    protected function upload(string $contents, string $filename, string $documentType, array $metadata = [], array $fileHeaders = []): array
     {
         $templateId = $metadata['template_id'] ?? null;
 
@@ -141,7 +143,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
             $this->awaitRequestSlot(self::UPLOAD_RATE_LIMIT_KEY, $this->requestsPerSecond);
 
             $response = Http::withToken($this->config['key'])
-                ->attach('files', $contents, $filename)
+                ->attach('files', $contents, $filename, $fileHeaders)
                 ->post($url);
 
             if ($response->successful()) {
