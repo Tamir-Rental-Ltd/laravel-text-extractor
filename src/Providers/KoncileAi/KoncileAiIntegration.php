@@ -10,6 +10,7 @@ use TamirRental\DocumentExtraction\Concerns\ThrottlesRequests;
 use TamirRental\DocumentExtraction\Contracts\DocumentExtractionProvider;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
+use TamirRental\DocumentExtraction\Services\ImageShrinker;
 
 class KoncileAiIntegration implements DocumentExtractionProvider
 {
@@ -26,6 +27,12 @@ class KoncileAiIntegration implements DocumentExtractionProvider
      * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
      */
     protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
+
+    /**
+     * Largest image Koncile AI accepts, in bytes. Koncile states 10 MB without saying
+     * whether that means 10^6 or 2^20 bytes, so the smaller reading is used.
+     */
+    public const int MAX_IMAGE_BYTES = 10_000_000;
 
     /**
      * @var array{url: ?string, key: ?string, webhook_secret: ?string}
@@ -60,8 +67,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     /**
      * Process a document extraction request.
      *
-     * Downloads the file from storage, uploads it to Koncile AI,
-     * and updates the extraction model with the result.
+     * Downloads the file from storage, shrinks an image over Koncile AI's size limit,
+     * uploads it to Koncile AI, and updates the extraction model with the result.
      */
     public function process(DocumentExtraction $extraction): void
     {
@@ -74,6 +81,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
 
                 return;
             }
+
+            $contents = (new ImageShrinker(self::MAX_IMAGE_BYTES))->shrink($contents);
 
             $result = $this->upload($contents, basename($extraction->filename), $extraction->type, $extraction->metadata ?? []);
 

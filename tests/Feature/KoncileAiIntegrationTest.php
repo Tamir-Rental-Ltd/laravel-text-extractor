@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
+use Intervention\Image\ImageManager;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 use TamirRental\DocumentExtraction\Providers\KoncileAi\KoncileAiIntegration;
@@ -335,5 +336,68 @@ describe('upload throttling', function () {
         Sleep::assertNeverSlept();
         expect($extraction->refresh()->external_task_id)->toBe('task-unthrottled')
             ->and(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
+});
+
+describe('image size limit', function () {
+    beforeEach(function () {
+        Http::fake(function ($request) {
+            $this->uploadedContents = collect($request->data())->firstWhere('name', 'files')['contents'];
+
+            return Http::response(['task_ids' => ['task-image-limit']], 200);
+        });
+
+        $this->smallJpeg = ImageManager::gd()->create(40, 20)->fill('ff0000')->toJpeg()->toString();
+    });
+
+    it('uploads an image over the limit shrunk to fit and leaves the stored file unchanged', function () {
+        $stored = str_pad($this->smallJpeg, KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0");
+        Storage::put('documents/receipt.jpg', $stored);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/receipt.jpg',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+        [$width, $height] = getimagesizefromstring($this->uploadedContents);
+
+        expect(strlen($this->uploadedContents))->toBeLessThanOrEqual(KoncileAiIntegration::MAX_IMAGE_BYTES)
+            ->and($width)->toBe(40)
+            ->and($height)->toBe(20)
+            ->and(Storage::get('documents/receipt.jpg'))->toBe($stored)
+            ->and($extraction->refresh()->external_task_id)->toBe('task-image-limit');
+    });
+
+    it('uploads a file unchanged', function (string $stored) {
+        Storage::put('documents/file', $stored);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/file',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        expect($this->uploadedContents)->toBe($stored);
+    })->with([
+        'image exactly at the limit' => fn (): string => str_pad($this->smallJpeg, KoncileAiIntegration::MAX_IMAGE_BYTES, "\0"),
+        'pdf over the limit' => fn (): string => str_pad("%PDF-1.4\n", KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0"),
+    ]);
+
+    it('fails extraction without uploading when an oversized image cannot be read', function () {
+        Storage::put('documents/broken.jpg', str_pad("\xFF\xD8\xFF", KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0"));
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/broken.jpg',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        Http::assertNothingSent();
+        expect($extraction->refresh())
+            ->status->toBe(DocumentExtractionStatusEnum::Failed)
+            ->error_message->toContain('Unable to decode input');
     });
 });
