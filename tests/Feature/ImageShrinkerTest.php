@@ -7,7 +7,7 @@ use TamirRental\DocumentExtraction\Services\ImageShrinker;
 /**
  * A 120x80 image of deterministic noise, which compresses like a photo rather than a graphic.
  */
-function busyImage(): ImageInterface
+function createNoiseImage(): ImageInterface
 {
     $image = ImageManager::gd()->create(120, 80);
 
@@ -23,7 +23,7 @@ function busyImage(): ImageInterface
 /**
  * Insert an EXIF segment holding only the given orientation tag right after the JPEG start marker.
  */
-function withExifOrientation(string $jpeg, int $orientation): string
+function addExifOrientation(string $jpeg, int $orientation): string
 {
     $exif = "Exif\x00\x00MM\x00\x2A\x00\x00\x00\x08\x00\x01\x01\x12\x00\x03\x00\x00\x00\x01".pack('n', $orientation)."\x00\x00\x00\x00\x00\x00";
 
@@ -31,7 +31,7 @@ function withExifOrientation(string $jpeg, int $orientation): string
 }
 
 it('keeps full size at the highest quality that fits', function (int $quality) {
-    $original = busyImage()->toJpeg(quality: 100)->toString();
+    $original = createNoiseImage()->toJpeg(quality: 100)->toString();
     $atQuality = ImageManager::gd()->read($original)->toJpeg(quality: $quality)->toString();
 
     $shrunk = (new ImageShrinker(strlen($atQuality)))->shrink($original);
@@ -40,7 +40,7 @@ it('keeps full size at the highest quality that fits', function (int $quality) {
 })->with([95, 90, 85, 80]);
 
 it('scales down only when the lowest quality does not fit', function () {
-    $original = busyImage()->toJpeg(quality: 100)->toString();
+    $original = createNoiseImage()->toJpeg(quality: 100)->toString();
     $maxBytes = ImageManager::gd()->read($original)->toJpeg(quality: 80)->size() - 1;
 
     $shrunk = (new ImageShrinker($maxBytes))->shrink($original);
@@ -52,7 +52,7 @@ it('scales down only when the lowest quality does not fit', function () {
 });
 
 it('converts an oversized png to a jpeg', function () {
-    $png = busyImage()->toPng()->toString();
+    $png = createNoiseImage()->toPng()->toString();
 
     $shrunk = (new ImageShrinker(strlen($png) - 1))->shrink($png);
     [0 => $width, 1 => $height, 'mime' => $mime] = getimagesizefromstring($shrunk);
@@ -63,7 +63,7 @@ it('converts an oversized png to a jpeg', function () {
 });
 
 it('turns a photo rotated only by its exif data upright', function () {
-    $rotated = withExifOrientation(busyImage()->toJpeg(quality: 100)->toString(), 6);
+    $rotated = addExifOrientation(createNoiseImage()->toJpeg(quality: 100)->toString(), 6);
 
     $shrunk = (new ImageShrinker(strlen($rotated) - 1))->shrink($rotated);
     [$width, $height] = getimagesizefromstring($shrunk);
