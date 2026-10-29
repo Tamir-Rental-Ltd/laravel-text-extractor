@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\ImageManager;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
@@ -351,9 +354,9 @@ describe('image size limit', function () {
             return Http::response(['task_ids' => ['task-image-limit']], 200);
         });
 
-        $image = ImageManager::gd()->create(40, 20)->fill('ff0000');
-        $this->smallJpeg = $image->toJpeg()->toString();
-        $this->smallPng = $image->toPng()->toString();
+        $image = ImageManager::usingDriver(Driver::class)->createImage(40, 20)->fill('ff0000');
+        $this->smallJpeg = $image->encode(new JpegEncoder)->toString();
+        $this->smallPng = $image->encode(new PngEncoder)->toString();
     });
 
     it('uploads an image over the limit shrunk to fit and leaves the stored file unchanged', function () {
@@ -424,6 +427,6 @@ describe('image size limit', function () {
         Http::assertNothingSent();
         expect($extraction->refresh())
             ->status->toBe(DocumentExtractionStatusEnum::Failed)
-            ->error_message->toContain('Unable to decode input');
+            ->error_message->toContain('Failed to process image');
     });
 });

@@ -2,8 +2,7 @@
 
 namespace TamirRental\DocumentExtraction\Services;
 
-use Illuminate\Support\Str;
-use Intervention\Image\ImageManager;
+use Illuminate\Support\Facades\Image;
 
 /**
  * Re-encodes an oversized JPEG or PNG as a JPEG that fits a byte limit, keeping as much
@@ -12,9 +11,9 @@ use Intervention\Image\ImageManager;
 class ImageShrinker
 {
     /**
-     * Leading bytes of the JPEG and PNG formats, the only images that are shrunk.
+     * Image types that are shrunk; anything else is returned unchanged.
      */
-    protected const array IMAGE_SIGNATURES = ["\xFF\xD8\xFF", "\x89PNG\r\n\x1A\n"];
+    protected const array SHRINKABLE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
     /**
      * JPEG qualities tried in order; the first one that fits is used.
@@ -37,28 +36,32 @@ class ImageShrinker
      */
     public function shrink(string $contents): string
     {
-        if (strlen($contents) <= $this->maxBytes || ! Str::startsWith($contents, self::IMAGE_SIGNATURES)) {
+        if (strlen($contents) <= $this->maxBytes) {
             return $contents;
         }
 
-        $manager = ImageManager::gd();
+        $image = Image::fromBytes($contents);
+
+        if (! collect(self::SHRINKABLE_MIME_TYPES)->contains($image->mimeType())) {
+            return $contents;
+        }
+
+        $image = $image->orient();
+        $width = null;
         $scale = 1.0;
 
         while (true) {
-            $image = $manager->read($contents);
-
-            if ($scale < 1.0) {
-                $image->scale(width: (int) round($image->width() * $scale));
-            }
+            $scaled = $width === null ? $image : $image->scale(width: (int) round($width * $scale));
 
             foreach (self::QUALITIES as $quality) {
-                $encoded = $image->toJpeg(quality: $quality);
+                $encoded = $scaled->toJpg()->quality($quality)->toBytes();
 
-                if ($encoded->size() <= $this->maxBytes) {
-                    return $encoded->toString();
+                if (strlen($encoded) <= $this->maxBytes) {
+                    return $encoded;
                 }
             }
 
+            $width ??= Image::fromBytes($encoded)->width();
             $scale *= self::SCALE_STEP;
         }
     }

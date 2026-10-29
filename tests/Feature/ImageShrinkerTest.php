@@ -1,5 +1,9 @@
 <?php
 
+use Illuminate\Support\Facades\Image;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Interfaces\ImageInterface;
 use TamirRental\DocumentExtraction\Services\ImageShrinker;
@@ -9,7 +13,7 @@ use TamirRental\DocumentExtraction\Services\ImageShrinker;
  */
 function createNoiseImage(): ImageInterface
 {
-    $image = ImageManager::gd()->create(120, 80);
+    $image = ImageManager::usingDriver(Driver::class)->createImage(120, 80);
 
     for ($x = 0; $x < 120; $x++) {
         for ($y = 0; $y < 80; $y++) {
@@ -31,8 +35,8 @@ function addExifOrientation(string $jpeg, int $orientation): string
 }
 
 it('keeps full size at the highest quality that fits', function (int $quality) {
-    $original = createNoiseImage()->toJpeg(quality: 100)->toString();
-    $atQuality = ImageManager::gd()->read($original)->toJpeg(quality: $quality)->toString();
+    $original = createNoiseImage()->encode(new JpegEncoder(quality: 100))->toString();
+    $atQuality = Image::fromBytes($original)->orient()->toJpg()->quality($quality)->toBytes();
 
     $shrunk = (new ImageShrinker(strlen($atQuality)))->shrink($original);
 
@@ -40,8 +44,8 @@ it('keeps full size at the highest quality that fits', function (int $quality) {
 })->with([95, 90, 85, 80]);
 
 it('scales down only when the lowest quality does not fit', function () {
-    $original = createNoiseImage()->toJpeg(quality: 100)->toString();
-    $maxBytes = ImageManager::gd()->read($original)->toJpeg(quality: 80)->size() - 1;
+    $original = createNoiseImage()->encode(new JpegEncoder(quality: 100))->toString();
+    $maxBytes = strlen(Image::fromBytes($original)->orient()->toJpg()->quality(80)->toBytes()) - 1;
 
     $shrunk = (new ImageShrinker($maxBytes))->shrink($original);
     [$width, $height] = getimagesizefromstring($shrunk);
@@ -52,7 +56,7 @@ it('scales down only when the lowest quality does not fit', function () {
 });
 
 it('converts an oversized png to a jpeg', function () {
-    $png = createNoiseImage()->toPng()->toString();
+    $png = createNoiseImage()->encode(new PngEncoder)->toString();
 
     $shrunk = (new ImageShrinker(strlen($png) - 1))->shrink($png);
     [0 => $width, 1 => $height, 'mime' => $mime] = getimagesizefromstring($shrunk);
@@ -63,7 +67,7 @@ it('converts an oversized png to a jpeg', function () {
 });
 
 it('turns a photo rotated only by its exif data upright', function () {
-    $rotated = addExifOrientation(createNoiseImage()->toJpeg(quality: 100)->toString(), 6);
+    $rotated = addExifOrientation(createNoiseImage()->encode(new JpegEncoder(quality: 100))->toString(), 6);
 
     $shrunk = (new ImageShrinker(strlen($rotated) - 1))->shrink($rotated);
     [$width, $height] = getimagesizefromstring($shrunk);
