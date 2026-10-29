@@ -21,8 +21,9 @@
         "ext-exif": "*",
         "ext-fileinfo": "*",
         "ext-gd": "*",
-        "illuminate/contracts": "^13.0",
+        "illuminate/contracts": "^13.20",
         "illuminate/image": "^13.20",
+        "illuminate/support": "^13.20",
         "intervention/image": "^4.0",
         "spatie/laravel-package-tools": "^1.16"
     },
