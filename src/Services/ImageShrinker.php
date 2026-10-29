@@ -2,6 +2,7 @@
 
 namespace TamirRental\DocumentExtraction\Services;
 
+use Illuminate\Image\ImageException;
 use Illuminate\Support\Facades\Image;
 
 /**
@@ -33,6 +34,8 @@ class ImageShrinker
      * Return the contents unchanged when they fit or are not a JPEG or PNG. Otherwise
      * return them upright as a JPEG at the highest listed quality that fits at full
      * size, scaling the image down in steps only when the lowest quality does not fit.
+     *
+     * @throws ImageException When the image does not fit even at one pixel wide.
      */
     public function shrink(string $contents): string
     {
@@ -48,10 +51,11 @@ class ImageShrinker
 
         $image = $image->orient();
         $width = null;
+        $targetWidth = null;
         $scale = 1.0;
 
         while (true) {
-            $scaled = $width === null ? $image : $image->scale(width: (int) round($width * $scale));
+            $scaled = $targetWidth === null ? $image : $image->scale(width: $targetWidth);
 
             foreach (self::QUALITIES as $quality) {
                 $encoded = $scaled->toJpg()->quality($quality)->toBytes();
@@ -61,8 +65,13 @@ class ImageShrinker
                 }
             }
 
+            if ($targetWidth === 1) {
+                throw new ImageException("The image does not fit in {$this->maxBytes} bytes even at one pixel wide.");
+            }
+
             $width ??= Image::fromBytes($encoded)->width();
             $scale *= self::SCALE_STEP;
+            $targetWidth = max(1, (int) round($width * $scale));
         }
     }
 }

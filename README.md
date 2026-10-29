@@ -19,7 +19,7 @@ A Laravel package for extracting structured data from documents (images, PDFs) v
 ## Requirements
 
 - PHP 8.4+
-- Laravel 11 or 12
+- Laravel 13
 
 ## Installation
 

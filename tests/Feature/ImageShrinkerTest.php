@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Image\ImageException;
 use Illuminate\Support\Facades\Image;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\JpegEncoder;
@@ -74,4 +75,11 @@ it('turns a photo rotated only by its exif data upright', function () {
 
     expect($width)->toBe(80)
         ->and($height)->toBe(120);
+});
+
+it('throws when the image does not fit even at one pixel wide', function () {
+    $original = createNoiseImage()->encode(new JpegEncoder(quality: 100))->toString();
+
+    expect(fn () => (new ImageShrinker(100))->shrink($original))
+        ->toThrow(ImageException::class, 'does not fit in 100 bytes even at one pixel wide');
 });
