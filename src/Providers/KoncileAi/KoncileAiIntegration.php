@@ -10,6 +10,7 @@ use TamirRental\DocumentExtraction\Concerns\ThrottlesRequests;
 use TamirRental\DocumentExtraction\Contracts\DocumentExtractionProvider;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
+use TamirRental\DocumentExtraction\Services\ImageShrinker;
 
 class KoncileAiIntegration implements DocumentExtractionProvider
 {
@@ -26,6 +27,12 @@ class KoncileAiIntegration implements DocumentExtractionProvider
      * Shared rate-limiter key so every process uploading to Koncile AI draws from one budget.
      */
     protected const string UPLOAD_RATE_LIMIT_KEY = 'koncile-ai:upload';
+
+    /**
+     * Largest image Koncile AI accepts, in bytes. Koncile states 10 MB without saying
+     * whether that means 10^6 or 2^20 bytes, so the smaller reading is used.
+     */
+    public const int MAX_IMAGE_BYTES = 10_000_000;
 
     /**
      * @var array{url: ?string, key: ?string, webhook_secret: ?string}
@@ -60,8 +67,8 @@ class KoncileAiIntegration implements DocumentExtractionProvider
     /**
      * Process a document extraction request.
      *
-     * Downloads the file from storage, uploads it to Koncile AI,
-     * and updates the extraction model with the result.
+     * Downloads the file from storage, shrinks an image over Koncile AI's size limit,
+     * uploads it to Koncile AI, and updates the extraction model with the result.
      */
     public function process(DocumentExtraction $extraction): void
     {
@@ -75,7 +82,10 @@ class KoncileAiIntegration implements DocumentExtractionProvider
                 return;
             }
 
-            $result = $this->upload($contents, basename($extraction->filename), $extraction->type, $extraction->metadata ?? []);
+            $uploadContents = (new ImageShrinker(self::MAX_IMAGE_BYTES))->shrink($contents);
+            $fileHeaders = $uploadContents === $contents ? [] : ['Content-Type' => 'image/jpeg'];
+
+            $result = $this->upload($uploadContents, basename($extraction->filename), $extraction->type, $extraction->metadata ?? [], $fileHeaders);
 
             if ($result['status'] === DocumentExtractionStatusEnum::Pending->value && ! empty($result['external_id'])) {
                 $extraction->update([
@@ -104,9 +114,10 @@ class KoncileAiIntegration implements DocumentExtractionProvider
      * Upload file contents to Koncile AI for extraction.
      *
      * @param  array<string, mixed>  $metadata
+     * @param  array<string, string>  $fileHeaders  Headers for the file part; without a Content-Type, it is derived from the filename.
      * @return array{status: string, external_id?: string, message: string}
      */
-    protected function upload(string $contents, string $filename, string $documentType, array $metadata = []): array
+    protected function upload(string $contents, string $filename, string $documentType, array $metadata = [], array $fileHeaders = []): array
     {
         $templateId = $metadata['template_id'] ?? null;
 
@@ -132,7 +143,7 @@ class KoncileAiIntegration implements DocumentExtractionProvider
             $this->awaitRequestSlot(self::UPLOAD_RATE_LIMIT_KEY, $this->requestsPerSecond);
 
             $response = Http::withToken($this->config['key'])
-                ->attach('files', $contents, $filename)
+                ->attach('files', $contents, $filename, $fileHeaders)
                 ->post($url);
 
             if ($response->successful()) {

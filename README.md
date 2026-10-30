@@ -3,7 +3,7 @@
 [![Tests](https://github.com/TamirRental/laravel-text-extractor/actions/workflows/run-tests.yml/badge.svg)](https://github.com/TamirRental/laravel-text-extractor/actions/workflows/run-tests.yml)
 [![Type Coverage](https://img.shields.io/badge/type--coverage-100%25-success)](https://github.com/TamirRental/laravel-text-extractor)
 [![PHP](https://img.shields.io/badge/php-8.4%2B-blue)](https://www.php.net)
-[![Laravel](https://img.shields.io/badge/laravel-11%20%7C%2012-red)](https://laravel.com)
+[![Laravel](https://img.shields.io/badge/laravel-13.20%2B-red)](https://laravel.com)
 
 A Laravel package for extracting structured data from documents (images, PDFs) via OCR APIs. Ships with a [Koncile AI](https://koncile.ai) provider out of the box.
 
@@ -18,8 +18,8 @@ A Laravel package for extracting structured data from documents (images, PDFs) v
 
 ## Requirements
 
-- PHP 8.4+
-- Laravel 11 or 12
+- PHP 8.4+ with the GD, EXIF and fileinfo extensions
+- Laravel 13.20+
 
 ## Installation
 

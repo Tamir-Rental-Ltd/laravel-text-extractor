@@ -8,7 +8,7 @@
         "koncile"
     ],
     "homepage": "https://github.com/TamirRental/laravel-text-extractor",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "license": "MIT",
     "authors": [
         {
@@ -18,12 +18,18 @@
     ],
     "require": {
         "php": "^8.4",
-        "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^11.0||^12.0||^13.0"
+        "ext-exif": "*",
+        "ext-fileinfo": "*",
+        "ext-gd": "*",
+        "illuminate/contracts": "^13.20",
+        "illuminate/image": "^13.20",
+        "illuminate/support": "^13.20",
+        "intervention/image": "^4.0",
+        "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
         "laravel/pint": "^1.14",
-        "orchestra/testbench": "^10.0||^11.0",
+        "orchestra/testbench": "^11.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0",
         "pestphp/pest-plugin-type-coverage": "^4.0"

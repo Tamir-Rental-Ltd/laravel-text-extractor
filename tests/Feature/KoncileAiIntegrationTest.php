@@ -5,6 +5,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\PngEncoder;
+use Intervention\Image\ImageManager;
 use TamirRental\DocumentExtraction\Enums\DocumentExtractionStatusEnum;
 use TamirRental\DocumentExtraction\Models\DocumentExtraction;
 use TamirRental\DocumentExtraction\Providers\KoncileAi\KoncileAiIntegration;
@@ -335,5 +340,93 @@ describe('upload throttling', function () {
         Sleep::assertNeverSlept();
         expect($extraction->refresh()->external_task_id)->toBe('task-unthrottled')
             ->and(RateLimiter::attempts('koncile-ai:upload'))->toBe(1);
+    });
+});
+
+describe('image size limit', function () {
+    beforeEach(function () {
+        Http::fake(function ($request) {
+            $part = collect($request->data())->firstWhere('name', 'files');
+            $this->uploadedContents = $part['contents'];
+            $this->uploadedFilename = $part['filename'];
+            $this->uploadedContentType = Str::match('/Content-Type: ([^\r\n]+)/', $request->body());
+
+            return Http::response(['task_ids' => ['task-image-limit']], 200);
+        });
+
+        $image = ImageManager::usingDriver(Driver::class)->createImage(40, 20)->fill('ff0000');
+        $this->smallJpeg = $image->encode(new JpegEncoder)->toString();
+        $this->smallPng = $image->encode(new PngEncoder)->toString();
+    });
+
+    it('uploads an image over the limit shrunk to fit and leaves the stored file unchanged', function () {
+        $stored = str_pad($this->smallJpeg, KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0");
+        Storage::put('documents/receipt.jpg', $stored);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/receipt.jpg',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+        [$width, $height] = getimagesizefromstring($this->uploadedContents);
+
+        expect(strlen($this->uploadedContents))->toBeLessThanOrEqual(KoncileAiIntegration::MAX_IMAGE_BYTES)
+            ->and($width)->toBe(40)
+            ->and($height)->toBe(20)
+            ->and(Storage::get('documents/receipt.jpg'))->toBe($stored)
+            ->and($extraction->refresh()->external_task_id)->toBe('task-image-limit');
+    });
+
+    it('uploads a file unchanged under its own name and type', function (string $stored, string $path, string $contentType) {
+        Storage::put($path, $stored);
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => $path,
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        expect($this->uploadedContents)->toBe($stored)
+            ->and($this->uploadedFilename)->toBe(basename($path))
+            ->and($this->uploadedContentType)->toBe($contentType);
+    })->with([
+        'image exactly at the limit' => [fn (): string => str_pad($this->smallPng, KoncileAiIntegration::MAX_IMAGE_BYTES, "\0"), 'documents/licence.png', 'image/png'],
+        'pdf over the limit' => [fn (): string => str_pad("%PDF-1.4\n", KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0"), 'documents/licence.pdf', 'application/pdf'],
+    ]);
+
+    it('labels a re-encoded upload as a jpeg under its own name', function (string $path) {
+        Storage::put($path, str_pad($this->smallPng, KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0"));
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => $path,
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        expect($this->uploadedFilename)->toBe(basename($path))
+            ->and($this->uploadedContentType)->toBe('image/jpeg')
+            ->and(getimagesizefromstring($this->uploadedContents)['mime'])->toBe('image/jpeg');
+    })->with([
+        'png name' => 'documents/licence.png',
+        'name without an extension' => '2026/10/28/0b3c9f2e',
+    ]);
+
+    it('fails extraction without uploading when an oversized image cannot be read', function () {
+        Storage::put('documents/broken.jpg', str_pad("\xFF\xD8\xFF", KoncileAiIntegration::MAX_IMAGE_BYTES + 1, "\0"));
+
+        $extraction = DocumentExtraction::factory()->create([
+            'filename' => 'documents/broken.jpg',
+            'metadata' => $this->metadata,
+        ]);
+
+        $this->integration->process($extraction);
+
+        Http::assertNothingSent();
+        expect($extraction->refresh())
+            ->status->toBe(DocumentExtractionStatusEnum::Failed)
+            ->error_message->toContain('Failed to process image');
     });
 });
