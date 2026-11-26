@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.4] - 2026-10-30
 
 ### Added
-- Images over 10 MB are shrunk (re-encoded as JPEG, then resized if needed) before uploading to Koncile AI; PDFs and smaller files are sent unchanged ([#23](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/pull/23)).
+- JPEG and PNG images over 10 MB are shrunk (re-encoded as JPEG, then resized if needed) before uploading to Koncile AI; PDFs, other image formats and smaller files are sent unchanged ([#23](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/pull/23)).
 
 ### Changed
-- Requires `intervention/image` 4.x and the `ext-gd` and `ext-exif` extensions.
+- Requires Laravel 13.20+ (`illuminate/*` `^13.20`); Laravel 11 and 12 are no longer supported.
+- Requires `intervention/image` 4.x and the `ext-gd`, `ext-exif` and `ext-fileinfo` extensions.
 
 ## [1.0.3] - 2026-08-20
 
@@ -39,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.1] - 2026-04-15
 
 ### Added
-- Laravel 13 support ([#12](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/pull/12)).
+- Laravel 13 support, alongside Laravel 11 and 12 ([#12](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/pull/12)).
 
 ## [1.0.0] - 2026-03-05
 
