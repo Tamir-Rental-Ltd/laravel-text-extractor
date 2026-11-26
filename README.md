@@ -1,7 +1,7 @@
 # Laravel Text Extractor
 
-[![Tests](https://github.com/TamirRental/laravel-text-extractor/actions/workflows/run-tests.yml/badge.svg)](https://github.com/TamirRental/laravel-text-extractor/actions/workflows/run-tests.yml)
-[![Type Coverage](https://img.shields.io/badge/type--coverage-100%25-success)](https://github.com/TamirRental/laravel-text-extractor)
+[![Tests](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/actions/workflows/run-tests.yml/badge.svg)](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor/actions/workflows/run-tests.yml)
+[![Type Coverage](https://img.shields.io/badge/type--coverage-100%25-success)](https://github.com/Tamir-Rental-Ltd/laravel-text-extractor)
 [![PHP](https://img.shields.io/badge/php-8.4%2B-blue)](https://www.php.net)
 [![Laravel](https://img.shields.io/badge/laravel-13.20%2B-red)](https://laravel.com)
 
